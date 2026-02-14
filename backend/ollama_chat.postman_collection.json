@@ -1,0 +1,68 @@
+{
+  "info": {
+    "name": "Ollama Chat API",
+    "_postman_id": "8c9e2f14-1234-5678-9abc-def012345678",
+    "description": "Test Ollama /api/chat endpoint with LLaMA 3 or other models",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Chat with LLaMA 3",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"model\": \"llama3:latest\",\n    \"message\": \"Hello, how are you?\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/chat",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "chat"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Test Mistral Model",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"model\": \"mistral:latest\",\n    \"message\": \"Hello, what can you do?\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/api/chat",
+          "protocol": "http",
+          "host": [
+            "localhost"
+          ],
+          "port": "8080",
+          "path": [
+            "api",
+            "chat"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

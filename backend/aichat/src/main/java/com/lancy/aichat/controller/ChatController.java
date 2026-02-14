@@ -1,169 +1,158 @@
 package com.lancy.aichat.controller;
 
+import com.lancy.aichat.service.ChatService;
+import com.lancy.aichat.dto.ChatRequest;
+import com.lancy.aichat.dto.ChatResponse;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.validation.annotation.Validated;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * REST controller for AI chat interactions.
+ * REST controller responsible for handling chat-related HTTP requests.
  *
  * <p>
- * This controller exposes both GET and POST endpoints (`/api/chat`)
- * that allow clients to send messages to the AI model (via Spring AI ChatClient)
- * and receive AI-generated responses.
+ * This controller exposes endpoints for interacting with the AI chat service.
+ * It supports both GET and POST methods for flexibility:
  * </p>
  *
- * <p>
- * Key features:
  * <ul>
- *     <li>Uses ChatClient from Spring AI for interacting with Ollama or other LLMs</li>
- *     <li>Supports both GET (quick testing) and POST (frontend integration)</li>
- *     <li>JSON request and response for clean API design</li>
- *     <li>Structured logging for observability</li>
- *     <li>Ready for enhancements like memory, streaming, or tool-calling</li>
+ *     <li>GET  /api/chat  - Simple query-based chat request</li>
+ *     <li>POST /api/chat  - JSON body-based chat request</li>
  * </ul>
- * </p>
  *
  * <p>
- * CORS is configured globally in {@link com.lancy.aichat.config.WebConfig}.
+ * The controller performs:
+ * </p>
+ * <ul>
+ *     <li>Input validation</li>
+ *     <li>Logging for observability</li>
+ *     <li>Error handling with proper HTTP status codes</li>
+ * </ul>
+ *
+ * <p>
+ * Business logic is delegated to {@link ChatService}.
  * </p>
  */
 @RestController
 @RequestMapping("/api")
-@Validated
 public class ChatController {
 
+    /**
+     * Logger instance for structured logging.
+     */
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
     /**
-     * Centralized system prompt that defines AI behavior.
-     * Keeping this constant ensures consistent responses across endpoints.
+     * Service responsible for communicating with the AI provider.
      */
-    private static final String SYSTEM_PROMPT =
-            "You are an AI Quantitative Trading Assistant. " +
-                    "Be precise. Be analytical. Focus on risk management.";
+    private final ChatService chatService;
 
     /**
-     * Spring AI ChatClient for sending prompts to the AI model.
-     */
-    private final ChatClient chatClient;
-
-    /**
-     * Constructor injection of ChatClient builder.
+     * Constructor-based dependency injection.
      *
-     * @param builder ChatClient.Builder provided by Spring AI auto-configuration
+     * @param chatService the service that handles AI response generation
      */
-    public ChatController(ChatClient.Builder builder) {
-        this.chatClient = builder.build();
+    public ChatController(ChatService chatService) {
+        this.chatService = chatService;
     }
 
     /**
-     * GET endpoint for quick testing via browser.
+     * Handles GET requests for chat interactions.
      *
      * <p>
      * Example:
      * <pre>
-     * http://localhost:8080/api/chat?message=Explain risk reward ratio
+     * GET /api/chat?message=Hello&model=llama3
      * </pre>
+     * </p>
      *
-     * @param message user message passed as query parameter
-     * @return ChatResponse containing AI-generated reply
+     * @param message the user message (required)
+     * @param model   optional AI model name
+     * @return {@link ResponseEntity} containing {@link ChatResponse}
      */
     @GetMapping("/chat")
-    public ChatResponse chatGet(
-            @RequestParam(defaultValue = "Tell me a trading joke") String message) {
+    public ResponseEntity<ChatResponse> chatGet(
+            @RequestParam String message,
+            @RequestParam(required = false) String model) {
 
         log.info("Received GET request with message: {}", message);
 
-        String response = generateAIResponse(message);
-
-        return new ChatResponse(response);
-    }
-
-    /**
-     * POST endpoint for structured frontend integration (e.g., Angular).
-     *
-     * <p>
-     * Example request body:
-     * <pre>
-     * {
-     *     "message": "Explain black holes in simple terms"
-     * }
-     * </pre>
-     *
-     * @param request ChatRequest containing the user message
-     * @return ChatResponse containing AI-generated reply
-     */
-    @PostMapping("/chat")
-    public ChatResponse chat(@RequestBody ChatRequest request) {
-
-        log.info("Received POST request with message: {}", request.message());
+        // Validate message input
+        if (message == null || message.trim().isEmpty()) {
+            log.warn("Invalid GET request: message is empty");
+            return ResponseEntity
+                    .badRequest()
+                    .body(new ChatResponse("Message cannot be empty."));
+        }
 
         try {
-            String response = generateAIResponse(request.message());
-            return new ChatResponse(response);
+            // Delegate response generation to service layer
+            String response = chatService.getResponse(message, model);
+
+            return ResponseEntity.ok(new ChatResponse(response));
 
         } catch (Exception e) {
+            // Log error for monitoring and debugging
+            log.error("Error while calling AI model (GET)", e);
 
-            log.error("Error while calling AI model", e);
-
-            return new ChatResponse("Error: Unable to process request at this time.");
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ChatResponse("Error: Unable to process request at this time."));
         }
     }
 
     /**
-     * Internal helper method to generate AI responses.
+     * Handles POST requests for chat interactions.
      *
      * <p>
-     * This method centralizes prompt construction logic so that both
-     * GET and POST endpoints reuse the same AI orchestration flow.
+     * Example:
+     * <pre>
+     * POST /api/chat
+     * {
+     *   "message": "Hello",
+     *   "model": "llama3",
+     *   "sessionId": "123",
+     *   "systemPrompt": "You are a helpful assistant"
+     * }
+     * </pre>
      * </p>
      *
-     * @param userMessage message provided by the client
-     * @return generated AI response text
+     * @param request {@link ChatRequest} containing user message and optional metadata
+     * @return {@link ResponseEntity} containing {@link ChatResponse}
      */
-    private String generateAIResponse(String userMessage) {
+    @PostMapping("/chat")
+    public ResponseEntity<ChatResponse> chat(@RequestBody ChatRequest request) {
 
-        return chatClient.prompt()
+        log.info("Received POST request with message: {}", request.message());
 
-                // Inject system instruction to guide model behavior
-                .system(SYSTEM_PROMPT)
+        // Validate input
+        if (request.message() == null || request.message().trim().isEmpty()) {
+            log.warn("Invalid POST request: message is empty");
+            return ResponseEntity
+                    .badRequest()
+                    .body(new ChatResponse("Message cannot be empty."));
+        }
 
-                // Add user message
-                .user(userMessage)
+        try {
+            // Delegate to service layer (business logic)
+            String response = chatService.getResponse(
+                    request.message(),
+                    request.model()
+            );
 
-                // Execute synchronous LLM call
-                .call()
+            return ResponseEntity.ok(new ChatResponse(response));
 
-                // Extract response text
-                .content();
+        } catch (Exception e) {
+            // Log exception for observability
+            log.error("Error while calling AI model (POST)", e);
+
+            return ResponseEntity
+                    .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ChatResponse("Error: Unable to process request at this time."));
+        }
     }
-
-    /**
-     * Request DTO for the chat endpoint.
-     *
-     * <p>
-     * Example JSON:
-     * <pre>
-     * { "message": "Hello AI!" }
-     * </pre>
-     *
-     * @param message user input message
-     */
-    public record ChatRequest(String message) {}
-
-    /**
-     * Response DTO for the chat endpoint.
-     *
-     * <p>
-     * Example JSON:
-     * <pre>
-     * { "response": "Hello! How can I help you today?" }
-     * </pre>
-     *
-     * @param response AI-generated output
-     */
-    public record ChatResponse(String response) {}
 }
